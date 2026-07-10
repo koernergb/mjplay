@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mjplay — M0 contact probe</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { margin: 0; box-sizing: border-box; }
+      html, body { height: 100%; background: #0f1115; color: #e6e8eb;
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      #app { position: fixed; inset: 0; }
+      #hud { position: fixed; top: 12px; left: 12px; z-index: 10;
+        background: rgba(20,23,30,.82); border: 1px solid #2a2f3a;
+        border-radius: 10px; padding: 12px 14px; max-width: 340px;
+        backdrop-filter: blur(8px); }
+      #hud h1 { font-size: 13px; font-weight: 600; letter-spacing: .02em;
+        color: #9db2ff; margin-bottom: 6px; }
+      #hud .row { display: flex; justify-content: space-between; gap: 12px;
+        padding: 1px 0; }
+      #hud .k { color: #7a8493; }
+      #hud .v { color: #e6e8eb; font-variant-numeric: tabular-nums; }
+      #ncon.hot { color: #ff5c5c; font-weight: 700; }
+      #hud .hint { margin-top: 8px; color: #6b7280; font-size: 11px; }
+      button { font: inherit; color: #e6e8eb; background: #1c2230;
+        border: 1px solid #2f3646; border-radius: 7px; padding: 5px 10px;
+        cursor: pointer; margin-top: 8px; }
+      button:hover { background: #262e40; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">
+      <h1>mjplay · M0 probe</h1>
+      <div class="row"><span class="k">nbody</span><span class="v" id="nbody">–</span></div>
+      <div class="row"><span class="k">njnt</span><span class="v" id="njnt">–</span></div>
+      <div class="row"><span class="k">ngeom</span><span class="v" id="ngeom">–</span></div>
+      <div class="row"><span class="k">nq / nu</span><span class="v" id="nqnu">–</span></div>
+      <div class="row"><span class="k">sim time</span><span class="v" id="time">–</span></div>
+      <div class="row"><span class="k">ncon (contacts)</span><span class="v" id="ncon">–</span></div>
+      <button id="reset">reset sim</button>
+      <div class="hint">Watch the arm fall onto the floor — ncon should jump above 0 and turn red. Open the console for per-contact geom IDs.</div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,61 @@
+Before I write this, one thing I should verify rather than assert from memory: the state of `mujoco_wasm` and whether MuJoCo's collision-contact data is actually exposed through the WASM bindings. That's the load-bearing assumption for the whole "lights up red on contact" feature, and if it's not exposed, the brief changes shape.The landscape shifted in your favor since you last scoped this. There's now an **official DeepMind-maintained WASM build** shipped as the `@mujoco/mujoco` npm package — developed and maintained by Google DeepMind and always up to date with the latest developments in MuJoCo. That's a big deal: it removes the "compile MuJoCo with emscripten yourself" step that used to be the multi-day trap at the front of this project. They've tested it on macOS in CI, so your Mac is a supported path.
+
+And `zalo/mujoco_wasm` — the repo you were probably thinking of — is now just a small demo suite in the examples folder, since DeepMind completed the official bindings, wrapping MuJoCo 3.3.8 with Three.js rendering. So your reference implementation for "MuJoCo + Three.js in a browser" already exists and is current. You're assembling, not inventing.
+
+One correctness note before the brief, because it changes framing: your original pitch says "URDF." MuJoCo doesn't natively eat URDF — it uses MJCF (its own XML). It *can* import URDF, but support is partial (URDF's collision/joint conventions don't all map cleanly). So the honest scope is a **MJCF viewer** that also accepts URDF-via-MuJoCo's-importer, with MuJoCo Menagerie as your guaranteed-clean model source. Don't promise pristine URDF fidelity — that's a rabbit hole with no completion gate.
+
+Here's the brief.
+
+---
+
+# Build Brief: `mjplay` — Browser MJCF/URDF Viewer + Contact Playground
+
+**One-liner:** Load a robot model in the browser, drag its joints, watch contacts light up red in real time. `urdfcheck` with a face.
+
+**Completion gate (memorize this, it's the whole point):**
+> *Load a Menagerie robot, drag a joint slider, and when two bodies collide the contacting geometry turns red — running at 60fps in the browser with a reset button.*
+
+If it does that, it's done. Everything below the gate is explicitly out of scope.
+
+## Why this one is tractable now
+The two historical time-sinks are both gone: MuJoCo now ships an official, macOS-tested WASM build via `@mujoco/mujoco`, and `zalo/mujoco_wasm` gives you a working MuJoCo+Three.js example harness to fork. Your remaining work is the *interaction layer* — sliders, contact-reading, red highlighting — not the physics or the compile.
+
+## Stack
+- **Physics:** `@mujoco/mujoco` (official npm WASM build). Fallback: fork `zalo/mujoco_wasm` if you want the Three.js glue pre-wired.
+- **Render:** Three.js (matches zalo's example, minimizes glue you write).
+- **Build:** Vite. Serve over HTTP (WASM needs it — no `file://`).
+- **Models:** MuJoCo Menagerie (Franka Panda, Unitree Go2, etc. — clean MJCF, no conversion risk). This sidesteps the URDF-fidelity problem entirely for your demo models.
+
+## The one technical thing to de-risk first (M0)
+Contact reading is the load-bearing feature. After `mj_step`, MuJoCo populates `data.contact` (an array of contact structs) and `data.ncon` (count). Each contact references two geom IDs (`geom1`, `geom2`). **Before writing any UI**, prove you can read `data.ncon` and pull geom IDs from the WASM bindings in a `console.log`. If contacts aren't cleanly exposed through the JS API, the whole "red on contact" premise wobbles and you want to know on day one, not day five. This is your go/no-go probe.
+
+(The official bindings wrap the C API with typed-array buffers for `qpos`, `xpos`, etc., so contact arrays are very likely exposed — but *verify*, don't assume. That's exactly the kind of assumption that eats a weekend.)
+
+## Milestones — each independently demoable
+
+**M0 — Contact probe + viewer boots (go/no-go)**
+Load a Menagerie MJCF, render it in Three.js, step the sim, and `console.log(data.ncon)` with geom IDs when you manually drop the robot onto the floor. No UI yet. Gate: *numbers print when things touch.* If this works, the project is real.
+
+**M1 — Joint dragging**
+Auto-generate a slider per actuated joint from `model.njnt` / joint ranges. Slider writes to `data.qpos` (or `data.ctrl`), call `mj_forward`, mesh updates. Gate: *drag slider, robot moves.* This alone is already a useful `urdfcheck`-style tool — shippable stopping point.
+
+**M2 — Red on contact (the money shot)**
+Each frame: read `data.contact[0..ncon]`, map contacting geom IDs → Three.js meshes, swap their material to red (revert when contact clears). Gate: *the completion-gate sentence above.* Ship it.
+
+## Explicitly OUT of scope (the escape hatches — name them to close them)
+- ❌ Perfect URDF import fidelity — use Menagerie MJCF; accept URDF best-effort only
+- ❌ Editing/authoring models in-browser
+- ❌ Contact *forces* / friction cones / physically-accurate response viz — boolean touch-or-not only
+- ❌ Multiple robots, scene building, environments
+- ❌ Saving/loading state, sharing URLs
+- ❌ Your own emscripten compilation — use the official npm build
+- ❌ Trajectory playback, control policies, anything that smells like "and then I'll add RL"
+
+## ROAHM / thesis hook (one line in the README, don't build on it yet)
+Frame it as the interactive front-end to the robotics-tooling-gap thesis: "static URDF linters tell you a file parses; this tells you what the robot *does* — where it self-collides, where joint limits bite." That's the sentence that makes it portfolio-legible to Vasudevan's group without expanding scope.
+
+---
+
+Realistic timeline: M0 in an evening if the contact probe cooperates, M1 the next, M2 the third. A weekend if the go/no-go passes clean.
+
+Want me to actually stand up the M0 skeleton — Vite project, `@mujoco/mujoco` wired in, a Menagerie model loading, and the contact-probe `console.log`? That's the one piece where verifying the WASM contact API early saves you from building UI on a bad assumption. I can hand you a runnable repo scaffold with M0 done and M1/M2 as stubbed task cards.
