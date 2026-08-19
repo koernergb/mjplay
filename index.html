@@ -10,6 +10,7 @@
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; overflow: hidden; background: #090d16; color: #ecf2ff; }
       button, input { font: inherit; }
+      select { font: inherit; color: #eaf0ff; background: #111a2b; border: 1px solid #30405d; border-radius: 8px; padding: 8px 10px; width: 100%; }
       #app { position: fixed; inset: 0; }
       .brand { position: fixed; top: 22px; left: 24px; z-index: 2; pointer-events: none; }
       .brand h1 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
@@ -44,6 +45,11 @@
       <header>
         <div id="status">Starting…</div>
         <div id="modelStats">Loading model structure</div>
+        <label class="section-title" for="modelPicker" style="display:block;padding:14px 0 6px">Robot model</label>
+        <select id="modelPicker">
+          <option value="panda">Franka Emika Panda</option>
+          <option value="ur5e">Universal Robots UR5e</option>
+        </select>
         <div class="toolbar">
           <button id="poseMode" type="button">Pose</button>
           <button id="simMode" type="button">Simulate</button>

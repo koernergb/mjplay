@@ -10,7 +10,7 @@ parts light up red.
 ## Implemented
 
 - Official `@mujoco/mujoco` 3.10.0 WebAssembly runtime
-- Franka Emika Panda from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
+- Franka Emika Panda and Universal Robots UR5e from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
 - Detailed mesh rendering in Three.js, including MJCF material colors
 - Joint controls generated from MuJoCo joint types, names, ranges, and qpos addresses
 - Pose mode for direct hinge/slide joint manipulation
@@ -19,8 +19,8 @@ parts light up red.
 - Live contact count, contact names, and whole-link red highlighting
 - Orbit camera and responsive desktop/mobile control panel
 
-The bundled model files retain their upstream license in
-`src/models/panda/LICENSE`.
+The bundled model files retain their upstream licenses inside each model
+directory under `src/models/`.
 
 ## Run
 
@@ -29,8 +29,8 @@ npm install
 npm run dev
 ```
 
-Use **Pose** to manipulate the seven arm joints and two finger joints. Switch
-to **Simulate** to run dynamics, or **Reset** to restore the Panda home pose.
+Pick a robot, then use **Pose** to manipulate its supported joints. Switch to
+**Simulate** to run dynamics, or **Reset** to restore its home pose.
 
 ## Verify
 
@@ -40,7 +40,7 @@ npm run build
 ```
 
 The probes validate both the original collision test scene and the bundled
-Panda model's load → pose → contact path without a browser.
+Menagerie models' load → pose → contact paths without a browser.
 
 ## Stack
 

@@ -2,28 +2,33 @@ import loadMujoco from '@mujoco/mujoco';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const pandaFiles = import.meta.glob('./models/panda/**/*', {
+const modelFiles = import.meta.glob('./models/**/*', {
   eager: true,
   query: '?url',
   import: 'default',
 });
+
+const MODELS = {
+  panda: { label: 'Franka Emika Panda', directory: 'panda', scene: 'scene.xml' },
+  ur5e: { label: 'Universal Robots UR5e', directory: 'ur5e', scene: 'scene.xml' },
+};
 
 const GEOM = { PLANE: 0, SPHERE: 2, CAPSULE: 3, ELLIPSOID: 4, CYLINDER: 5, BOX: 6, MESH: 7 };
 const JOINT = { FREE: 0, BALL: 1, SLIDE: 2, HINGE: 3 };
 const OBJ = { BODY: 1, JOINT: 3, GEOM: 5 };
 const $ = (id) => document.getElementById(id);
 
-function assetPath(sourcePath) {
-  return `/models/panda/${sourcePath.split('/models/panda/')[1]}`;
-}
-
-async function mountPanda(mujoco) {
-  mujoco.FS.mkdirTree('/models/panda/assets');
-  await Promise.all(Object.entries(pandaFiles).map(async ([sourcePath, url]) => {
+async function mountModel(mujoco, modelConfig) {
+  const marker = `/models/${modelConfig.directory}/`;
+  const virtualRoot = `/models/${modelConfig.directory}`;
+  mujoco.FS.mkdirTree(`${virtualRoot}/assets`);
+  const files = Object.entries(modelFiles).filter(([sourcePath]) => sourcePath.includes(marker));
+  await Promise.all(files.map(async ([sourcePath, url]) => {
     if (sourcePath.endsWith('NOTICE.md')) return;
     const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
-    mujoco.FS.writeFile(assetPath(sourcePath), bytes);
+    mujoco.FS.writeFile(`${virtualRoot}/${sourcePath.split(marker)[1]}`, bytes);
   }));
+  return `${virtualRoot}/${modelConfig.scene}`;
 }
 
 function modelName(mujoco, model, type, id, fallback) {
@@ -64,11 +69,19 @@ function primitiveGeometry(type, size) {
 }
 
 async function main() {
+  const selectedKey = new URLSearchParams(location.search).get('model') || 'panda';
+  const selectedModel = MODELS[selectedKey] || MODELS.panda;
+  $('modelPicker').value = Object.hasOwn(MODELS, selectedKey) ? selectedKey : 'panda';
+  $('modelPicker').addEventListener('change', (event) => {
+    const url = new URL(location.href);
+    url.searchParams.set('model', event.target.value);
+    location.assign(url);
+  });
   $('status').textContent = 'Loading MuJoCo…';
   const mujoco = await loadMujoco();
-  $('status').textContent = 'Mounting Panda assets…';
-  await mountPanda(mujoco);
-  const model = mujoco.MjModel.from_xml_path('/models/panda/scene.xml');
+  $('status').textContent = `Mounting ${selectedModel.label} assets…`;
+  const scenePath = await mountModel(mujoco, selectedModel);
+  const model = mujoco.MjModel.from_xml_path(scenePath);
   const data = new mujoco.MjData(model);
 
   const app = $('app');
@@ -245,7 +258,7 @@ async function main() {
   reset();
   setMode('pose');
   $('modelStats').textContent = `${model.nbody} bodies · ${model.njnt} joints · ${model.ngeom} geoms`;
-  $('status').textContent = 'Franka Panda ready';
+  $('status').textContent = `${selectedModel.label} ready`;
 
   let accumulator = 0;
   let previous = performance.now();
