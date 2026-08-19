@@ -68,9 +68,9 @@ After M1 you have a working URDF/MJCF inspector. That alone is portfolio-worthy.
 - Do it as a diff (only touch meshes whose state changed) to hold 60fps.
 - **DONE:** self-collide the robot (or land it on the floor) → exactly the touching geoms turn red, revert when clear. **← COMPLETION GATE MET.**
 
-### M2.3 — Polish to demo-ready (optional, timeboxed to 2h)
-- Model picker dropdown (2–3 Menagerie robots). "Reset" + "pose/sim" toggle in a clean corner panel.
-- README with the one-line thesis hook + a GIF.
+### M2.3 — Polish to demo-ready (model picker complete)
+- ✅ Model picker dropdown with Panda and UR5e. "Reset" + "pose/sim" toggle in a clean corner panel.
+- README has the one-line thesis hook; demo GIF remains optional polish.
 - **DONE:** a stranger can load the page, pick a robot, drag it into a self-collision, and see red — without instructions.
 
 ---
