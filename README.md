@@ -1,16 +1,26 @@
 # mjplay
 
-Browser MJCF/URDF viewer + contact playground. Load a robot, drag its joints,
-watch contacting geometry light up red in real time. `urdfcheck` with a face.
+Interactive browser-based MuJoCo robot inspector. Pose a real robot with
+model-generated joint controls, run its physics simulation, and see contacting
+parts light up red.
 
 > Static URDF linters tell you a file *parses*. mjplay tells you what the robot
-> *does* — where it self-collides and where joint limits bite.
+> *does* — how its joints move and where it collides.
 
-## Status: M0 complete (verified)
+## Implemented
 
-The contact-readability go/no-go is **green**, verified headless against the
-real `@mujoco/mujoco` 3.10.0 WASM build (see `probe_test.mjs`):
-first contact fires at t≈0.35s and per-contact geom IDs are readable from JS.
+- Official `@mujoco/mujoco` 3.10.0 WebAssembly runtime
+- Franka Emika Panda from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
+- Detailed mesh rendering in Three.js, including MJCF material colors
+- Joint controls generated from MuJoCo joint types, names, ranges, and qpos addresses
+- Pose mode for direct hinge/slide joint manipulation
+- Simulation mode with fixed-timestep physics
+- Reset to the model's Menagerie `home` keyframe
+- Live contact count, contact names, and whole-link red highlighting
+- Orbit camera and responsive desktop/mobile control panel
+
+The bundled model files retain their upstream license in
+`src/models/panda/LICENSE`.
 
 ## Run
 
@@ -19,40 +29,27 @@ npm install
 npm run dev
 ```
 
-Open the page: three primitive bodies fall onto a floor + obstacle. The HUD
-shows live `ncon`; it turns red when contacts exist. Contacting geoms turn red
-in the 3D view. Open the console for the one-time first-contact geom-ID dump.
+Use **Pose** to manipulate the seven arm joints and two finger joints. Switch
+to **Simulate** to run dynamics, or **Reset** to restore the Panda home pose.
 
-## Headless probe (no browser)
+## Verify
 
 ```sh
-node probe_test.mjs
+npm run probe
+npm run build
 ```
 
-Runs the exact load → step → read-contacts path main.js uses. Use this to
-re-verify the API after any dependency bump.
+The probes validate both the original collision test scene and the bundled
+Panda model's load → pose → contact path without a browser.
 
 ## Stack
 
-- `@mujoco/mujoco` 3.10.0 — official DeepMind WASM build, single-threaded
-  (no cross-origin-isolation headers needed). macOS-supported.
-- Three.js — rendering. Meshes built per-geom from primitive types.
-- Vite — dev server; copies the `.wasm` asset to the served root.
+- `@mujoco/mujoco` — official DeepMind WASM bindings
+- Three.js — generated primitive and MuJoCo mesh rendering
+- Vite — development server and production build
 
-## Gotchas already handled
+## Current scope
 
-- `data.contact` returns a **copy** each step — re-fetched and `.delete()`d
-  every frame (Embind handles are not GC'd).
-- MuJoCo capsule/cylinder long-axis is local **Z**; Three's is local **Y** — rotated.
-- MuJoCo `geom_xmat` is **row-major** 3×3 — transposed into Three's Matrix4.
-
-## Next (see TASKS.md)
-
-- **M1** — swap in a Menagerie MJCF; auto-generate joint sliders from
-  `jnt_type`/`jnt_range` (hinge + slide only); pose vs sim toggle.
-- **M2** — the red-on-contact highlight is already wired; polish + model picker.
-
-## Out of scope
-
-Contact forces, friction viz, free/ball-joint sliders, in-browser model
-editing, multi-robot scenes, your own emscripten compile. See TASKS.md.
+The current release intentionally ships one known-good Menagerie MJCF model.
+User-supplied MJCF/URDF loading, perfect URDF fidelity, model authoring, contact
+forces, and multi-robot scenes remain out of scope.

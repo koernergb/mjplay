@@ -39,31 +39,31 @@ The point of M0 is to prove the risky assumption (contacts readable from JS) *be
 
 ---
 
-## M1 — Joint dragging  ·  shippable stopping point
+## M1 — Joint dragging  ·  COMPLETE
 
 After M1 you have a working URDF/MJCF inspector. That alone is portfolio-worthy. Ship here if you must.
 
-### M1.1 — Sim loop with fixed timestep
+### M1.1 — Sim loop with fixed timestep ✅
 - rAF loop, accumulator stepping `mj_step` at `model.opt.timestep`, render interpolated. Reset button → `mj_resetData`.
 - **DONE:** robot falls under gravity smoothly at 60fps; reset returns it to start.
 
-### M1.2 — Auto-generate joint sliders
+### M1.2 — Auto-generate joint sliders ✅
 - For each joint `j` in `0..model.njnt`: read `jnt_type[j]` (skip free/ball for v1 — handle hinge & slide only), `jnt_range[2*j]`/`[2*j+1]` for min/max. Build one HTML slider each, labeled by joint index.
 - **DONE:** N sliders appear for an N-actuated-joint robot, each with correct min/max.
 
-### M1.3 — Slider → pose
+### M1.3 — Slider → pose ✅
 - Slider writes to the joint's `qpos` address, then `mj_forward` (kinematics only, no dynamics) so dragging poses the robot without it falling. Toggle: "pose mode" (forward only) vs "sim mode" (full step).
 - **DONE:** drag a slider in pose mode → that joint rotates, rest of robot stays put.
 
 ---
 
-## M2 — Red on contact  ·  THE MONEY SHOT
+## M2 — Red on contact  ·  CORE COMPLETE
 
-### M2.1 — geom → mesh map
+### M2.1 — geom → mesh map ✅
 - Build a lookup: geom index → Three mesh (you already create meshes per geom in M0.3; store the mapping there). Also cache each mesh's original material.
 - **DONE:** `geomToMesh[k]` returns the right mesh for any geom `k`.
 
-### M2.2 — Per-frame contact highlight
+### M2.2 — Per-frame contact highlight ✅
 - Each frame after stepping: collect the set of geoms in contact (`c.geom1`, `c.geom2` for `i in 0..ncon`). Set those meshes' material to red; revert everything else to cached original.
 - Do it as a diff (only touch meshes whose state changed) to hold 60fps.
 - **DONE:** self-collide the robot (or land it on the floor) → exactly the touching geoms turn red, revert when clear. **← COMPLETION GATE MET.**
