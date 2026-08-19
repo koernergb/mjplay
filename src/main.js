@@ -1,208 +1,275 @@
 import loadMujoco from '@mujoco/mujoco';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { SCENE_XML } from './scene.js';
 
-// ---- MuJoCo geom type enum (matches mjtGeom ordering) ----
-const GEOM = { PLANE: 0, HFIELD: 1, SPHERE: 2, CAPSULE: 3, ELLIPSOID: 4,
-              CYLINDER: 5, BOX: 6, MESH: 7 };
+const pandaFiles = import.meta.glob('./models/panda/**/*', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
 
+const GEOM = { PLANE: 0, SPHERE: 2, CAPSULE: 3, ELLIPSOID: 4, CYLINDER: 5, BOX: 6, MESH: 7 };
+const JOINT = { FREE: 0, BALL: 1, SLIDE: 2, HINGE: 3 };
+const OBJ = { BODY: 1, JOINT: 3, GEOM: 5 };
 const $ = (id) => document.getElementById(id);
 
+function assetPath(sourcePath) {
+  return `/models/panda/${sourcePath.split('/models/panda/')[1]}`;
+}
+
+async function mountPanda(mujoco) {
+  mujoco.FS.mkdirTree('/models/panda/assets');
+  await Promise.all(Object.entries(pandaFiles).map(async ([sourcePath, url]) => {
+    if (sourcePath.endsWith('NOTICE.md')) return;
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    mujoco.FS.writeFile(assetPath(sourcePath), bytes);
+  }));
+}
+
+function modelName(mujoco, model, type, id, fallback) {
+  try { return mujoco.mj_id2name(model, type, id) || fallback; }
+  catch { return fallback; }
+}
+
+function meshGeometry(model, meshId) {
+  const geometry = new THREE.BufferGeometry();
+  const vertexStart = model.mesh_vertadr[meshId];
+  const vertexCount = model.mesh_vertnum[meshId];
+  const faceStart = model.mesh_faceadr[meshId];
+  const faceCount = model.mesh_facenum[meshId];
+  const positions = new Float32Array(vertexCount * 3);
+  const indices = new Uint32Array(faceCount * 3);
+
+  for (let i = 0; i < positions.length; i++) positions[i] = model.mesh_vert[vertexStart * 3 + i];
+  for (let i = 0; i < indices.length; i++) indices[i] = model.mesh_face[faceStart * 3 + i];
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function primitiveGeometry(type, size) {
+  const [x, y, z] = size;
+  if (type === GEOM.SPHERE) return new THREE.SphereGeometry(x, 24, 16);
+  if (type === GEOM.BOX) return new THREE.BoxGeometry(x * 2, y * 2, z * 2);
+  if (type === GEOM.CYLINDER) return new THREE.CylinderGeometry(x, x, z * 2, 24);
+  if (type === GEOM.CAPSULE) return new THREE.CapsuleGeometry(x, y * 2, 8, 16);
+  if (type === GEOM.ELLIPSOID) {
+    const geometry = new THREE.SphereGeometry(1, 24, 16);
+    geometry.scale(x, y, z);
+    return geometry;
+  }
+  return null;
+}
+
 async function main() {
-  // 1) Load the official WASM module.
+  $('status').textContent = 'Loading MuJoCo…';
   const mujoco = await loadMujoco();
+  $('status').textContent = 'Mounting Panda assets…';
+  await mountPanda(mujoco);
+  const model = mujoco.MjModel.from_xml_path('/models/panda/scene.xml');
+  const data = new mujoco.MjData(model);
 
-  // 2) Load the model from an XML string (no VFS / asset files needed for M0).
-  const model = mujoco.MjModel.from_xml_string(SCENE_XML);
-  const data  = new mujoco.MjData(model);
-
-  // 3) Report structural counts (M0.2 DONE check).
-  $('nbody').textContent = model.nbody;
-  $('njnt').textContent  = model.njnt;
-  $('ngeom').textContent = model.ngeom;
-  $('nqnu').textContent  = `${model.nq} / ${model.nu}`;
-  console.log('[M0.2] nbody=%d njnt=%d ngeom=%d nq=%d nu=%d',
-    model.nbody, model.njnt, model.ngeom, model.nq, model.nu);
-
-  // ---- Three.js setup ----
   const app = $('app');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(app.clientWidth, app.clientHeight);
   renderer.shadowMap.enabled = true;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   app.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0f1115);
-
-  const camera = new THREE.PerspectiveCamera(
-    45, app.clientWidth / app.clientHeight, 0.01, 100);
-  camera.position.set(1.6, 1.2, 1.8);
-
+  scene.background = new THREE.Color(0x090d16);
+  scene.fog = new THREE.Fog(0x090d16, 4, 9);
+  const camera = new THREE.PerspectiveCamera(42, app.clientWidth / app.clientHeight, 0.01, 100);
+  camera.up.set(0, 0, 1);
+  camera.position.set(2.1, -2.2, 1.45);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0.3, 0.3, 0);
+  controls.target.set(0, 0, 0.55);
   controls.enableDamping = true;
 
-  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x1a1d24, 0.9));
-  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
-  dir.position.set(2, 4, 3); dir.castShadow = true; scene.add(dir);
+  scene.add(new THREE.HemisphereLight(0xc9ddff, 0x172033, 1.5));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+  keyLight.position.set(2, -2, 4);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
 
-  // 4) Build one Three mesh per MuJoCo geom (M0.3).
-  //    Read flat typed-array views for geom properties.
-  const geom_type = model.geom_type;
-  const geom_size = model.geom_size;   // 3 per geom
-  const geom_rgba = model.geom_rgba;   // 4 per geom
-  const geomMeshes = [];               // index -> { mesh, baseMat }  (null for planes)
+  const geomEntries = Array(model.ngeom).fill(null);
+  const bodyMeshes = new Map();
+  const geometryCache = new Map();
+  const redMaterial = new THREE.MeshStandardMaterial({ color: 0xff334f, emissive: 0x7a0617, roughness: 0.38 });
 
-  for (let g = 0; g < model.ngeom; g++) {
-    const t = geom_type[g];
-    const sx = geom_size[g*3+0], sy = geom_size[g*3+1], sz = geom_size[g*3+2];
-    const r = geom_rgba[g*4+0], gg = geom_rgba[g*4+1],
-          b = geom_rgba[g*4+2], a = geom_rgba[g*4+3];
-
-    let geo = null;
-    if (t === GEOM.SPHERE)        geo = new THREE.SphereGeometry(sx, 24, 16);
-    else if (t === GEOM.BOX)      geo = new THREE.BoxGeometry(sx*2, sy*2, sz*2);
-    else if (t === GEOM.CYLINDER) geo = new THREE.CylinderGeometry(sx, sx, sz*2, 24);
-    else if (t === GEOM.CAPSULE)  geo = new THREE.CapsuleGeometry(sx, sy*2, 8, 16);
-    else if (t === GEOM.ELLIPSOID){ geo = new THREE.SphereGeometry(1,24,16);
-                                    geo.scale(sx, sy, sz); }
-    else if (t === GEOM.PLANE) {
-      // Render the floor as a large flat grid; not tracked for contact colour.
-      const grid = new THREE.GridHelper(6, 24, 0x2a2f3a, 0x20242e);
-      grid.rotation.x = Math.PI / 2;   // MuJoCo plane spans local x-y
+  for (let geomId = 0; geomId < model.ngeom; geomId++) {
+    const type = model.geom_type[geomId];
+    if (type === GEOM.PLANE) {
+      const grid = new THREE.GridHelper(8, 32, 0x46658f, 0x202b3e);
+      grid.rotation.x = Math.PI / 2;
       scene.add(grid);
-      geomMeshes.push(null);
       continue;
     }
 
-    if (!geo) { geomMeshes.push(null); continue; } // unsupported (e.g. mesh) in M0
+    // Menagerie group 3 contains collision hulls that overlap the detailed visual meshes.
+    if (model.geom_group[geomId] === 3) continue;
+    let geometry;
+    if (type === GEOM.MESH) {
+      const meshId = model.geom_dataid[geomId];
+      if (!geometryCache.has(meshId)) geometryCache.set(meshId, meshGeometry(model, meshId));
+      geometry = geometryCache.get(meshId);
+    } else {
+      geometry = primitiveGeometry(type, [
+        model.geom_size[geomId * 3], model.geom_size[geomId * 3 + 1], model.geom_size[geomId * 3 + 2],
+      ]);
+    }
+    if (!geometry) continue;
 
-    const baseMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(r, gg, b), transparent: a < 1, opacity: a,
-      roughness: 0.6, metalness: 0.05 });
-    const mesh = new THREE.Mesh(geo, baseMat);
-    mesh.castShadow = true; mesh.receiveShadow = true;
-
-    // MuJoCo capsule/cylinder long-axis is local Z; Three's is local Y. Rotate.
-    if (t === GEOM.CAPSULE || t === GEOM.CYLINDER) mesh.rotation.x = Math.PI / 2;
-
+    const rgba = Array.from(model.geom_rgba.slice(geomId * 4, geomId * 4 + 4));
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(rgba[0], rgba[1], rgba[2]),
+      opacity: rgba[3],
+      transparent: rgba[3] < 1,
+      roughness: 0.55,
+      metalness: 0.04,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.matrixAutoUpdate = false;
     scene.add(mesh);
-    geomMeshes.push({ mesh, baseMat });
+
+    const bodyId = model.geom_bodyid[geomId];
+    const entry = { mesh, material, bodyId, axisFix: type === GEOM.CAPSULE || type === GEOM.CYLINDER };
+    geomEntries[geomId] = entry;
+    if (!bodyMeshes.has(bodyId)) bodyMeshes.set(bodyId, []);
+    bodyMeshes.get(bodyId).push(entry);
   }
 
-  const redMat = new THREE.MeshStandardMaterial({
-    color: 0xff4444, emissive: 0x551111, roughness: 0.4 });
+  const sliders = [];
+  for (let jointId = 0; jointId < model.njnt; jointId++) {
+    const type = model.jnt_type[jointId];
+    if (type !== JOINT.HINGE && type !== JOINT.SLIDE) continue;
+    const min = model.jnt_range[jointId * 2];
+    const max = model.jnt_range[jointId * 2 + 1];
+    const qposAddress = model.jnt_qposadr[jointId];
+    const name = modelName(mujoco, model, OBJ.JOINT, jointId, `joint ${jointId + 1}`);
+    const row = document.createElement('label');
+    row.className = 'joint';
+    row.innerHTML = `<span>${name}</span><output></output><input type="range" min="${min}" max="${max}" step="${type === JOINT.SLIDE ? 0.001 : 0.01}">`;
+    const input = row.querySelector('input');
+    const output = row.querySelector('output');
+    input.addEventListener('input', () => {
+      data.qpos[qposAddress] = Number(input.value);
+      output.value = Number(input.value).toFixed(type === JOINT.SLIDE ? 3 : 2);
+      mujoco.mj_forward(model, data);
+    });
+    $('joints').appendChild(row);
+    sliders.push({ input, output, qposAddress, type });
+  }
 
-  // 5) Sync Three mesh transforms from MuJoCo geom world pose.
-  //    geom_xpos (3/geom) and geom_xmat (9/geom, row-major) are live views.
-  const m4 = new THREE.Matrix4();
-  function syncTransforms() {
-    const xpos = data.geom_xpos, xmat = data.geom_xmat;
-    for (let g = 0; g < model.ngeom; g++) {
-      const entry = geomMeshes[g];
-      if (!entry) continue;
-      const o = g*3, r = g*9;
-      // MuJoCo row-major 3x3 -> Three Matrix4 (column-major set() takes row args).
-      m4.set(
-        xmat[r+0], xmat[r+1], xmat[r+2], xpos[o+0],
-        xmat[r+3], xmat[r+4], xmat[r+5], xpos[o+1],
-        xmat[r+6], xmat[r+7], xmat[r+8], xpos[o+2],
-        0, 0, 0, 1);
-      entry.mesh.matrixAutoUpdate = false;
-      entry.mesh.matrix.copy(m4);
-      // Re-apply the axis fix for capsules/cylinders on top of the pose.
-      if (entry.mesh.geometry.type === 'CapsuleGeometry' ||
-          entry.mesh.geometry.type === 'CylinderGeometry') {
-        entry.mesh.matrix.multiply(
-          new THREE.Matrix4().makeRotationX(Math.PI / 2));
-      }
+  function refreshSliders() {
+    for (const slider of sliders) {
+      slider.input.value = data.qpos[slider.qposAddress];
+      slider.output.value = Number(slider.input.value).toFixed(slider.type === JOINT.SLIDE ? 3 : 2);
     }
   }
 
-  // 6) THE CONTACT PROBE (M0.4). data.contact is a COPY: re-fetch + delete each step.
-  const inContact = new Set();
-  function readContacts() {
-    inContact.clear();
-    const ncon = data.ncon;
-    if (ncon > 0) {
-      const contacts = data.contact;             // fresh copy this step
-      for (let i = 0; i < ncon; i++) {
-        const c = contacts.get(i);
-        if (!c) continue;
-        inContact.add(c.geom1); inContact.add(c.geom2);
-        c.delete();                              // free the element handle
-      }
-      contacts.delete();                         // free the vector handle
-    }
-    return ncon;
-  }
-
-  // 7) Apply red highlight as a diff (only touch changed meshes -> stays 60fps).
-  const currentlyRed = new Set();
-  function applyHighlight() {
-    for (const g of inContact) {
-      const e = geomMeshes[g];
-      if (e && !currentlyRed.has(g)) e.mesh.material = redMat;
-    }
-    for (const g of [...currentlyRed]) {
-      if (!inContact.has(g)) {
-        const e = geomMeshes[g];
-        if (e) e.mesh.material = e.baseMat;
-        currentlyRed.delete(g);
-      }
-    }
-    for (const g of inContact) currentlyRed.add(g);
-  }
-
-  // 8) Reset button (M1.1 preview — resets state to the model's initial pose).
-  $('reset').addEventListener('click', () => {
-    mujoco.mj_resetData(model, data);
+  function reset() {
+    if (model.nkey > 0) mujoco.mj_resetDataKeyframe(model, data, 0);
+    else mujoco.mj_resetData(model, data);
     mujoco.mj_forward(model, data);
-  });
+    refreshSliders();
+  }
 
-  // 9) Fixed-timestep loop.
-  const dt = model.opt.timestep;
-  let acc = 0, last = performance.now();
-  let loggedFirstContact = false;
+  let mode = 'pose';
+  function setMode(nextMode) {
+    mode = nextMode;
+    $('poseMode').classList.toggle('active', mode === 'pose');
+    $('simMode').classList.toggle('active', mode === 'sim');
+    $('modeText').textContent = mode === 'pose' ? 'Pose mode · drag joints directly' : 'Simulation running';
+    for (const { input } of sliders) input.disabled = mode === 'sim';
+  }
+  $('poseMode').addEventListener('click', () => setMode('pose'));
+  $('simMode').addEventListener('click', () => setMode('sim'));
+  $('reset').addEventListener('click', reset);
 
+  const transform = new THREE.Matrix4();
+  const axisFix = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+  function syncTransforms() {
+    for (let geomId = 0; geomId < model.ngeom; geomId++) {
+      const entry = geomEntries[geomId];
+      if (!entry) continue;
+      const p = geomId * 3;
+      const r = geomId * 9;
+      transform.set(
+        data.geom_xmat[r], data.geom_xmat[r + 1], data.geom_xmat[r + 2], data.geom_xpos[p],
+        data.geom_xmat[r + 3], data.geom_xmat[r + 4], data.geom_xmat[r + 5], data.geom_xpos[p + 1],
+        data.geom_xmat[r + 6], data.geom_xmat[r + 7], data.geom_xmat[r + 8], data.geom_xpos[p + 2],
+        0, 0, 0, 1,
+      );
+      entry.mesh.matrix.copy(transform);
+      if (entry.axisFix) entry.mesh.matrix.multiply(axisFix);
+    }
+  }
+
+  const highlighted = new Set();
+  function updateContacts() {
+    const activeBodies = new Set();
+    const labels = new Set();
+    const contacts = data.ncon > 0 ? data.contact : null;
+    for (let i = 0; i < data.ncon; i++) {
+      const contact = contacts.get(i);
+      const ids = [contact.geom1, contact.geom2];
+      ids.forEach((geomId) => activeBodies.add(model.geom_bodyid[geomId]));
+      labels.add(ids.map((geomId) => modelName(mujoco, model, OBJ.GEOM, geomId, `geom ${geomId}`)).join(' ↔ '));
+      contact.delete();
+    }
+    contacts?.delete();
+
+    for (const entry of highlighted) {
+      if (!activeBodies.has(entry.bodyId)) {
+        entry.mesh.material = entry.material;
+        highlighted.delete(entry);
+      }
+    }
+    for (const bodyId of activeBodies) {
+      for (const entry of bodyMeshes.get(bodyId) || []) {
+        entry.mesh.material = redMaterial;
+        highlighted.add(entry);
+      }
+    }
+    $('ncon').textContent = data.ncon;
+    $('ncon').classList.toggle('hot', data.ncon > 0);
+    $('contacts').textContent = labels.size ? [...labels].slice(0, 3).join('\n') : 'No active contacts';
+  }
+
+  reset();
+  setMode('pose');
+  $('modelStats').textContent = `${model.nbody} bodies · ${model.njnt} joints · ${model.ngeom} geoms`;
+  $('status').textContent = 'Franka Panda ready';
+
+  let accumulator = 0;
+  let previous = performance.now();
   function frame(now) {
     requestAnimationFrame(frame);
-    acc += Math.min((now - last) / 1000, 0.05); last = now;
-    while (acc >= dt) { mujoco.mj_step(model, data); acc -= dt; }
-
-    const ncon = readContacts();
-    applyHighlight();
-    syncTransforms();
-
-    // HUD
-    $('time').textContent = data.time.toFixed(2) + 's';
-    const nconEl = $('ncon');
-    nconEl.textContent = ncon;
-    nconEl.classList.toggle('hot', ncon > 0);
-
-    // M0.4 DONE check: log the first real contact with geom IDs, once.
-    if (ncon > 0 && !loggedFirstContact) {
-      loggedFirstContact = true;
-      const c2 = data.contact;
-      console.log('[M0.4] FIRST CONTACT at t=%ss, ncon=%d', data.time.toFixed(3), ncon);
-      for (let i = 0; i < ncon; i++) {
-        const c = c2.get(i);
-        console.log('  contact %d: geom1=%d geom2=%d dist=%f',
-          i, c.geom1, c.geom2, c.dist);
-        c.delete();
+    const elapsed = Math.min((now - previous) / 1000, 0.05);
+    previous = now;
+    if (mode === 'sim') {
+      accumulator += elapsed;
+      while (accumulator >= model.opt.timestep) {
+        mujoco.mj_step(model, data);
+        accumulator -= model.opt.timestep;
       }
-      c2.delete();
-      console.log('[M0.4] ✓ GO — contacts are readable from JS.');
+      refreshSliders();
+    } else {
+      accumulator = 0;
+      mujoco.mj_forward(model, data);
     }
-
+    updateContacts();
+    syncTransforms();
+    $('time').textContent = `${data.time.toFixed(2)}s`;
     controls.update();
     renderer.render(scene, camera);
   }
-
-  // initial forward so first frame is posed correctly, then run.
-  mujoco.mj_forward(model, data);
   requestAnimationFrame(frame);
 
   addEventListener('resize', () => {
@@ -212,10 +279,8 @@ async function main() {
   });
 }
 
-main().catch((e) => {
-  console.error('mjplay failed to start:', e);
-  document.getElementById('hud').innerHTML =
-    '<h1 style="color:#ff5c5c">startup failed</h1>' +
-    '<div style="color:#e6e8eb">' + (e?.message || e) + '</div>' +
-    '<div class="hint">Check the console. Most likely the .wasm asset isn\\'t being served.</div>';
+main().catch((error) => {
+  console.error('mjplay failed to start:', error);
+  $('status').textContent = `Startup failed: ${error?.message || error}`;
+  $('status').classList.add('error');
 });
