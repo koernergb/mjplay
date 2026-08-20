@@ -83,8 +83,23 @@ After M1 you have a working URDF/MJCF inspector. That alone is portfolio-worthy.
 - ❌ Multiple robots in one scene, scene building
 - ❌ Save/load/share state
 - ❌ Your own emscripten compile — the npm build is verified working
-- ❌ Trajectory playback, control policies, "and then RL"
+- ❌ Training, fine-tuning, and arbitrary undocumented policy uploads
 - ❌ Multithreaded (`mt/`) build — single-threaded is enough for one robot
 
 ## Thesis hook (README, one line — don't build on it)
 > Static URDF linters tell you a file *parses*. mjplay tells you what the robot *does* — where it self-collides and where joint limits bite. Interactive front-end to the robotics-tooling-gap thesis.
+
+---
+
+## P0 — Browser policy runtime · COMPLETE
+
+- ✅ Lazy ONNX Runtime Web session and deterministic model fixture
+- ✅ Versioned policy manifest validation
+- ✅ Exact actuator mapping and bounded joint-position action adapter
+- ✅ Independent 20 Hz policy scheduler over MuJoCo physics
+- ✅ Play, pause, reset, single-step, command controls, and push disturbance
+- ✅ Live inference timing, action norm, and clipping diagnostics
+- ✅ Node reference probe and browser interaction verification
+
+Next: select a trained Go2 checkpoint whose observation/action contract and
+license can be bundled faithfully. See `POLICY_EXECUTION.md`.

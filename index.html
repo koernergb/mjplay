@@ -20,7 +20,7 @@
       #status { font-size: 14px; font-weight: 700; color: #b9ccff; }
       #status.error { color: #ff6f83; }
       #modelStats, #modeText { margin-top: 4px; font-size: 11px; color: #74829a; }
-      .toolbar { display: grid; grid-template-columns: 1fr 1fr auto; gap: 7px; margin-top: 14px; }
+      .toolbar { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 7px; margin-top: 14px; }
       button { border: 1px solid #30405d; color: #a9b5c9; background: #182237; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
       button:hover { background: #22304b; }
       button.active { color: white; background: #315dc5; border-color: #4e7bea; }
@@ -35,6 +35,13 @@
       .metrics strong { color: #eaf0ff; font-variant-numeric: tabular-nums; }
       #ncon.hot { color: #ff4d68; }
       #contacts { min-height: 30px; margin-top: 8px; white-space: pre-line; color: #718097; font: 10px/1.45 ui-monospace, monospace; }
+      #policyPanel { padding: 0 18px 14px; border-bottom: 1px solid #26344c; }
+      #policyPanel[hidden] { display: none; }
+      .policy-buttons { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
+      .policy-command { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; margin-top: 10px; color: #aebbd0; font-size: 11px; }
+      .policy-command input { grid-column: 1 / -1; width: 100%; accent-color: #5d87f4; }
+      .policy-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; margin-top: 10px; font: 10px/1.4 ui-monospace, monospace; color: #718097; }
+      .policy-metrics strong { color: #b9ccff; text-align: right; }
       @media (max-width: 650px) { .brand { display: none; } .panel { top: auto; height: 48vh; } }
     </style>
   </head>
@@ -53,10 +60,27 @@
         <div class="toolbar">
           <button id="poseMode" type="button">Pose</button>
           <button id="simMode" type="button">Simulate</button>
+          <button id="policyMode" type="button">Policy</button>
           <button id="reset" type="button">Reset</button>
         </div>
         <div id="modeText">Preparing controls…</div>
       </header>
+      <section id="policyPanel" hidden>
+        <div class="section-title" style="padding-left:0">ONNX policy lab</div>
+        <div class="policy-buttons">
+          <button id="policyPlay" type="button">Play</button>
+          <button id="policyStep" type="button">Step</button>
+          <button id="policyPush" type="button">Push</button>
+        </div>
+        <label class="policy-command"><span>Motion amplitude</span><output id="amplitudeValue">0.65</output><input id="policyAmplitude" type="range" min="0" max="1" step="0.05" value="0.65"></label>
+        <label class="policy-command"><span>Cycle speed</span><output id="speedValue">0.40 Hz</output><input id="policySpeed" type="range" min="0.1" max="1.2" step="0.05" value="0.4"></label>
+        <div class="policy-metrics">
+          <span>runtime</span><strong id="policyRuntime">not loaded</strong>
+          <span>inference</span><strong id="inferenceTime">–</strong>
+          <span>action norm</span><strong id="actionNorm">–</strong>
+          <span>clipped</span><strong id="clippedActions">0</strong>
+        </div>
+      </section>
       <div class="section-title">Joint controls</div>
       <div id="joints"></div>
       <div class="readout">
