@@ -1,6 +1,9 @@
 import loadMujoco from '@mujoco/mujoco';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import ur5ePolicyManifest from './policies/ur5e-wave/policy.json';
+import ur5ePolicyUrl from './policies/ur5e-wave/policy.onnx?url';
+import { OnnxPolicy, applyJointPositionAction, resolvePolicyActuators } from './policy-runtime.js';
 
 const modelFiles = import.meta.glob('./models/**/*', {
   eager: true,
@@ -10,12 +13,15 @@ const modelFiles = import.meta.glob('./models/**/*', {
 
 const MODELS = {
   panda: { label: 'Franka Emika Panda', directory: 'panda', scene: 'scene.xml' },
-  ur5e: { label: 'Universal Robots UR5e', directory: 'ur5e', scene: 'scene.xml' },
+  ur5e: {
+    label: 'Universal Robots UR5e', directory: 'ur5e', scene: 'scene.xml',
+    policy: { manifest: ur5ePolicyManifest, url: ur5ePolicyUrl },
+  },
 };
 
 const GEOM = { PLANE: 0, SPHERE: 2, CAPSULE: 3, ELLIPSOID: 4, CYLINDER: 5, BOX: 6, MESH: 7 };
 const JOINT = { FREE: 0, BALL: 1, SLIDE: 2, HINGE: 3 };
-const OBJ = { BODY: 1, JOINT: 3, GEOM: 5 };
+const OBJ = { BODY: 1, JOINT: 3, GEOM: 5, ACTUATOR: 19 };
 const $ = (id) => document.getElementById(id);
 
 async function mountModel(mujoco, modelConfig) {
@@ -186,24 +192,163 @@ async function main() {
     }
   }
 
+  let mode = 'pose';
+  let policy = null;
+  let policyLoading = null;
+  let policyPlaying = false;
+  let policyPending = false;
+  let policyPhase = 0;
+  let policyAccumulator = 0;
+  let currentControl = Float64Array.from(data.ctrl);
+  let policyActuatorIds = [];
+  let policyHomeControl = [];
+  let policyControlRanges = [];
+  let pushRemaining = 0;
+  const pushBodyId = selectedModel.policy
+    ? mujoco.mj_name2id(model, OBJ.BODY, 'wrist_3_link')
+    : -1;
+
   function reset() {
     if (model.nkey > 0) mujoco.mj_resetDataKeyframe(model, data, 0);
     else mujoco.mj_resetData(model, data);
     mujoco.mj_forward(model, data);
+    policyPhase = 0;
+    policyAccumulator = 0;
+    pushRemaining = 0;
+    currentControl = Float64Array.from(data.ctrl);
+    if (policyActuatorIds.length) {
+      policyHomeControl = policyActuatorIds.map((id) => data.ctrl[id]);
+    }
     refreshSliders();
   }
 
-  let mode = 'pose';
-  function setMode(nextMode) {
+  async function ensurePolicy() {
+    if (!selectedModel.policy) throw new Error('No policy is available for this robot');
+    if (policy) return policy;
+    if (policyLoading) return policyLoading;
+    $('policyRuntime').textContent = 'loading…';
+    $('status').textContent = 'Loading ONNX policy…';
+    policyLoading = (async () => {
+      policyActuatorIds = resolvePolicyActuators(mujoco, model, selectedModel.policy.manifest, OBJ.ACTUATOR);
+      policyControlRanges = policyActuatorIds.map((id) => [
+        model.actuator_ctrlrange[id * 2], model.actuator_ctrlrange[id * 2 + 1],
+      ]);
+      reset();
+      policy = await OnnxPolicy.create(
+        selectedModel.policy.manifest,
+        selectedModel.policy.url,
+        selectedKey,
+      );
+      $('policyRuntime').textContent = `${policy.executionProvider} · cold ${policy.coldStartMs.toFixed(0)}ms`;
+      $('inferenceTime').textContent = `${policy.warmInferenceMs.toFixed(2)}ms warm`;
+      $('status').textContent = `${selectedModel.label} policy ready`;
+      return policy;
+    })().catch((error) => {
+      policyLoading = null;
+      $('policyRuntime').textContent = 'load failed';
+      throw error;
+    });
+    return policyLoading;
+  }
+
+  async function inferPolicy() {
+    if (policyPending) return;
+    policyPending = true;
+    try {
+      const runner = await ensurePolicy();
+      const amplitude = Number($('policyAmplitude').value);
+      const speed = Number($('policySpeed').value);
+      const observation = new Float32Array([
+        Math.sin(policyPhase) * amplitude,
+        Math.cos(policyPhase) * amplitude,
+        amplitude,
+      ]);
+      const rawAction = await runner.run(observation);
+      const result = applyJointPositionAction(
+        rawAction,
+        selectedModel.policy.manifest,
+        policyHomeControl,
+        policyControlRanges,
+      );
+      currentControl = Float64Array.from(data.ctrl);
+      policyActuatorIds.forEach((id, index) => { currentControl[id] = result.applied[index]; });
+      policyPhase += 2 * Math.PI * speed / selectedModel.policy.manifest.control_hz;
+      $('inferenceTime').textContent = `${runner.lastInferenceMs.toFixed(2)}ms`;
+      $('actionNorm').textContent = result.actionNorm.toFixed(3);
+      $('clippedActions').textContent = result.clippedCount;
+    } catch (error) {
+      policyPlaying = false;
+      $('policyPlay').textContent = 'Play';
+      $('status').textContent = `Policy stopped: ${error.message}`;
+      $('status').classList.add('error');
+      console.error('policy inference failed:', error);
+    } finally {
+      policyPending = false;
+    }
+  }
+
+  function applyPolicyForces(dt) {
+    data.ctrl.set(currentControl);
+    data.xfrc_applied.fill(0);
+    if (pushRemaining > 0 && pushBodyId > 0) {
+      data.xfrc_applied[pushBodyId * 6 + 1] = 65;
+      pushRemaining -= dt;
+    }
+  }
+
+  async function setMode(nextMode) {
+    if (nextMode === 'policy') {
+      try { await ensurePolicy(); }
+      catch (error) {
+        $('status').textContent = `Policy failed: ${error.message}`;
+        $('status').classList.add('error');
+        return;
+      }
+    }
     mode = nextMode;
     $('poseMode').classList.toggle('active', mode === 'pose');
     $('simMode').classList.toggle('active', mode === 'sim');
-    $('modeText').textContent = mode === 'pose' ? 'Pose mode · drag joints directly' : 'Simulation running';
-    for (const { input } of sliders) input.disabled = mode === 'sim';
+    $('policyMode').classList.toggle('active', mode === 'policy');
+    $('policyPanel').hidden = mode !== 'policy';
+    $('modeText').textContent = mode === 'pose'
+      ? 'Pose mode · drag joints directly'
+      : mode === 'sim' ? 'Simulation running' : 'ONNX policy control';
+    for (const { input } of sliders) input.disabled = mode !== 'pose';
   }
-  $('poseMode').addEventListener('click', () => setMode('pose'));
-  $('simMode').addEventListener('click', () => setMode('sim'));
-  $('reset').addEventListener('click', reset);
+  $('policyMode').disabled = !selectedModel.policy;
+  $('poseMode').addEventListener('click', () => { void setMode('pose'); });
+  $('simMode').addEventListener('click', () => { void setMode('sim'); });
+  $('policyMode').addEventListener('click', () => { void setMode('policy'); });
+  $('reset').addEventListener('click', () => {
+    policyPlaying = false;
+    $('policyPlay').textContent = 'Play';
+    reset();
+  });
+  $('policyPlay').addEventListener('click', async () => {
+    await setMode('policy');
+    if (mode !== 'policy') return;
+    policyPlaying = !policyPlaying;
+    $('policyPlay').textContent = policyPlaying ? 'Pause' : 'Play';
+  });
+  $('policyStep').addEventListener('click', async () => {
+    await setMode('policy');
+    if (mode !== 'policy') return;
+    policyPlaying = false;
+    $('policyPlay').textContent = 'Play';
+    await inferPolicy();
+    const steps = Math.max(1, Math.round((1 / selectedModel.policy.manifest.control_hz) / model.opt.timestep));
+    for (let i = 0; i < steps; i++) {
+      applyPolicyForces(model.opt.timestep);
+      mujoco.mj_step(model, data);
+    }
+  });
+  $('policyPush').addEventListener('click', () => { pushRemaining = 0.18; });
+  $('policyAmplitude').addEventListener('input', () => {
+    $('amplitudeValue').textContent = Number($('policyAmplitude').value).toFixed(2);
+  });
+  $('policySpeed').addEventListener('input', () => {
+    $('speedValue').textContent = `${Number($('policySpeed').value).toFixed(2)} Hz`;
+  });
 
   const transform = new THREE.Matrix4();
   const axisFix = new THREE.Matrix4().makeRotationX(Math.PI / 2);
@@ -256,7 +401,7 @@ async function main() {
   }
 
   reset();
-  setMode('pose');
+  void setMode('pose');
   $('modelStats').textContent = `${model.nbody} bodies · ${model.njnt} joints · ${model.ngeom} geoms`;
   $('status').textContent = `${selectedModel.label} ready`;
 
@@ -266,9 +411,18 @@ async function main() {
     requestAnimationFrame(frame);
     const elapsed = Math.min((now - previous) / 1000, 0.05);
     previous = now;
-    if (mode === 'sim') {
+    if (mode === 'sim' || (mode === 'policy' && policyPlaying)) {
       accumulator += elapsed;
       while (accumulator >= model.opt.timestep) {
+        if (mode === 'policy') {
+          policyAccumulator += model.opt.timestep;
+          const policyDt = 1 / selectedModel.policy.manifest.control_hz;
+          if (policyAccumulator >= policyDt) {
+            policyAccumulator %= policyDt;
+            void inferPolicy();
+          }
+          applyPolicyForces(model.opt.timestep);
+        }
         mujoco.mj_step(model, data);
         accumulator -= model.opt.timestep;
       }

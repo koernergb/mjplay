@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "ur5e-wave-v1",
+  "name": "UR5e neural wave",
+  "description": "A deterministic ONNX motion policy that exercises the browser inference loop.",
+  "robot": "ur5e",
+  "runtime": "onnx",
+  "control_hz": 20,
+  "observation": {
+    "input_name": "observation",
+    "size": 3,
+    "terms": ["phase_sin", "phase_cos", "amplitude"]
+  },
+  "action": {
+    "output_name": "action",
+    "type": "joint_position_target",
+    "size": 6,
+    "scale": 0.7,
+    "clip": 1,
+    "actuators": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow",
+      "wrist_1",
+      "wrist_2",
+      "wrist_3"
+    ]
+  }
+}

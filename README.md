@@ -18,6 +18,9 @@ parts light up red.
 - Reset to the model's Menagerie `home` keyframe
 - Live contact count, contact names, and whole-link red highlighting
 - Orbit camera and responsive desktop/mobile control panel
+- Lazy ONNX Runtime Web policy execution for the UR5e demo
+- Policy play, pause, single-step, amplitude/speed commands, push disturbance,
+  action norm, clipping, and inference timing
 
 The bundled model files retain their upstream licenses inside each model
 directory under `src/models/`.
@@ -32,6 +35,13 @@ npm run dev
 Pick a robot, then use **Pose** to manipulate its supported joints. Switch to
 **Simulate** to run dynamics, or **Reset** to restore its home pose.
 
+On the UR5e, select **Policy** to run the bundled ONNX neural-motion fixture.
+The fixture maps phase observations to six actuator targets and exists to prove
+the complete browser inference → `data.ctrl` → MuJoCo loop. It is deliberately
+not described as a trained robotics policy. See
+[`docs/POLICY_EXECUTION.md`](docs/POLICY_EXECUTION.md) for the contract and the
+roadmap to a real Go2 locomotion policy.
+
 ## Verify
 
 ```sh
@@ -39,8 +49,9 @@ npm run probe
 npm run build
 ```
 
-The probes validate both the original collision test scene and the bundled
-Menagerie models' load → pose → contact paths without a browser.
+The probes validate the original collision test scene, both Menagerie models,
+manifest validation, deterministic ONNX output, and action adaptation without
+a browser.
 
 ## Stack
 
@@ -50,6 +61,6 @@ Menagerie models' load → pose → contact paths without a browser.
 
 ## Current scope
 
-The current release intentionally ships one known-good Menagerie MJCF model.
+The current release intentionally ships two known-good Menagerie MJCF models.
 User-supplied MJCF/URDF loading, perfect URDF fidelity, model authoring, contact
 forces, and multi-robot scenes remain out of scope.
