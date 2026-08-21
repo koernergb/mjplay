@@ -52,12 +52,22 @@ export class OnnxPolicy {
     this.warmInferenceMs = 0;
   }
 
-  static async create(manifest, modelUrl, expectedRobot) {
+  static async create(manifest, modelUrl, expectedRobot, externalData = []) {
     validatePolicyManifest(manifest, expectedRobot);
     const started = performance.now();
     const ort = await import('onnxruntime-web/wasm');
     ort.env.wasm.numThreads = 1;
-    const session = await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] });
+    if (typeof window !== 'undefined') {
+      const [{ default: wasm }, { default: mjs }] = await Promise.all([
+        import('onnxruntime-web/ort-wasm-simd-threaded.wasm?url'),
+        import('onnxruntime-web/ort-wasm-simd-threaded.mjs?url'),
+      ]);
+      ort.env.wasm.wasmPaths = { wasm: new URL(wasm, location.href).href, mjs: new URL(mjs, location.href).href };
+    }
+    const session = await ort.InferenceSession.create(modelUrl, {
+      executionProviders: ['wasm'],
+      externalData,
+    });
     const policy = new OnnxPolicy(manifest, session, ort, 'wasm', performance.now() - started);
     const zero = new Float32Array(manifest.observation.size);
     await policy.run(zero);
@@ -82,6 +92,40 @@ export class OnnxPolicy {
     }
     return Float32Array.from(action);
   }
+}
+
+export function rotateVectorByInverseQuaternion(vector, quaternion) {
+  const [w, x, y, z] = quaternion;
+  const [vx, vy, vz] = vector;
+  // R(q)^T v, where MuJoCo free-joint quaternions use w, x, y, z order.
+  return [
+    (1 - 2 * (y * y + z * z)) * vx + 2 * (x * y + w * z) * vy + 2 * (x * z - w * y) * vz,
+    2 * (x * y - w * z) * vx + (1 - 2 * (x * x + z * z)) * vy + 2 * (y * z + w * x) * vz,
+    2 * (x * z + w * y) * vx + 2 * (y * z - w * x) * vy + (1 - 2 * (x * x + y * y)) * vz,
+  ];
+}
+
+export function buildGo2Observation(data, jointQposAddresses, jointDofAddresses, defaultPose, command, previousAction) {
+  const quaternion = Array.from(data.qpos.slice(3, 7));
+  const angularVelocity = rotateVectorByInverseQuaternion(data.qvel.slice(3, 6), quaternion);
+  const projectedGravity = rotateVectorByInverseQuaternion([0, 0, -1], quaternion);
+  const jointPositionError = jointQposAddresses.map((address, index) => data.qpos[address] - defaultPose[index]);
+  const jointVelocity = jointDofAddresses.map((address) => data.qvel[address]);
+  return new Float32Array([
+    ...angularVelocity,
+    ...projectedGravity,
+    ...command,
+    ...jointPositionError,
+    ...jointVelocity,
+    ...previousAction,
+  ]);
+}
+
+export function jointPositionTargetsToTorque(targets, jointPositions, jointVelocities, stiffness, damping, torqueRanges) {
+  return Float64Array.from(targets, (target, index) => {
+    const torque = stiffness[index] * (target - jointPositions[index]) - damping[index] * jointVelocities[index];
+    return Math.max(torqueRanges[index][0], Math.min(torqueRanges[index][1], torque));
+  });
 }
 
 export function applyJointPositionAction(rawAction, manifest, homeControl, controlRanges) {

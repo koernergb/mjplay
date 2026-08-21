@@ -3,7 +3,16 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import ur5ePolicyManifest from './policies/ur5e-wave/policy.json';
 import ur5ePolicyUrl from './policies/ur5e-wave/policy.onnx?url';
-import { OnnxPolicy, applyJointPositionAction, resolvePolicyActuators } from './policy-runtime.js';
+import go2PolicyManifest from './policies/go2-velocity-flat/policy.json';
+import go2PolicyUrl from './policies/go2-velocity-flat/policy.onnx?url';
+import go2PolicyDataUrl from './policies/go2-velocity-flat/policy.onnx.data?url';
+import {
+  OnnxPolicy,
+  applyJointPositionAction,
+  buildGo2Observation,
+  jointPositionTargetsToTorque,
+  resolvePolicyActuators,
+} from './policy-runtime.js';
 
 const modelFiles = import.meta.glob('./models/**/*', {
   eager: true,
@@ -16,6 +25,15 @@ const MODELS = {
   ur5e: {
     label: 'Universal Robots UR5e', directory: 'ur5e', scene: 'scene.xml',
     policy: { manifest: ur5ePolicyManifest, url: ur5ePolicyUrl },
+  },
+  go2: {
+    label: 'Unitree Go2', directory: 'go2', scene: 'scene.xml',
+    policy: {
+      manifest: go2PolicyManifest,
+      url: go2PolicyUrl,
+      externalData: [{ path: 'policy.onnx.data', data: go2PolicyDataUrl }],
+      adapter: 'go2_velocity',
+    },
   },
 };
 
@@ -203,10 +221,13 @@ async function main() {
   let policyActuatorIds = [];
   let policyHomeControl = [];
   let policyControlRanges = [];
+  let policyJointQposAddresses = [];
+  let policyJointDofAddresses = [];
+  let previousAction = new Float32Array(selectedModel.policy?.manifest.action.size || 0);
   let pushRemaining = 0;
-  const pushBodyId = selectedModel.policy
-    ? mujoco.mj_name2id(model, OBJ.BODY, 'wrist_3_link')
-    : -1;
+  const pushBodyId = selectedKey === 'go2'
+    ? mujoco.mj_name2id(model, OBJ.BODY, 'base')
+    : selectedModel.policy ? mujoco.mj_name2id(model, OBJ.BODY, 'wrist_3_link') : -1;
 
   function reset() {
     if (model.nkey > 0) mujoco.mj_resetDataKeyframe(model, data, 0);
@@ -216,8 +237,12 @@ async function main() {
     policyAccumulator = 0;
     pushRemaining = 0;
     currentControl = Float64Array.from(data.ctrl);
+    previousAction.fill(0);
     if (policyActuatorIds.length) {
-      policyHomeControl = policyActuatorIds.map((id) => data.ctrl[id]);
+      policyHomeControl = selectedModel.policy.adapter === 'go2_velocity'
+        ? [...selectedModel.policy.manifest.action.default_pose]
+        : policyActuatorIds.map((id) => data.ctrl[id]);
+      if (selectedModel.policy.adapter === 'go2_velocity') currentControl = Float64Array.from(policyHomeControl);
     }
     refreshSliders();
   }
@@ -233,11 +258,22 @@ async function main() {
       policyControlRanges = policyActuatorIds.map((id) => [
         model.actuator_ctrlrange[id * 2], model.actuator_ctrlrange[id * 2 + 1],
       ]);
+      if (selectedModel.policy.adapter === 'go2_velocity') {
+        const jointNames = selectedModel.policy.manifest.action.joints;
+        const jointIds = jointNames.map((name) => {
+          const id = mujoco.mj_name2id(model, OBJ.JOINT, name);
+          if (id < 0) throw new Error(`policy joint "${name}" does not exist in the MuJoCo model`);
+          return id;
+        });
+        policyJointQposAddresses = jointIds.map((id) => model.jnt_qposadr[id]);
+        policyJointDofAddresses = jointIds.map((id) => model.jnt_dofadr[id]);
+      }
       reset();
       policy = await OnnxPolicy.create(
         selectedModel.policy.manifest,
         selectedModel.policy.url,
         selectedKey,
+        selectedModel.policy.externalData,
       );
       $('policyRuntime').textContent = `${policy.executionProvider} · cold ${policy.coldStartMs.toFixed(0)}ms`;
       $('inferenceTime').textContent = `${policy.warmInferenceMs.toFixed(2)}ms warm`;
@@ -258,20 +294,39 @@ async function main() {
       const runner = await ensurePolicy();
       const amplitude = Number($('policyAmplitude').value);
       const speed = Number($('policySpeed').value);
-      const observation = new Float32Array([
-        Math.sin(policyPhase) * amplitude,
-        Math.cos(policyPhase) * amplitude,
-        amplitude,
-      ]);
+      const observation = selectedModel.policy.adapter === 'go2_velocity'
+        ? buildGo2Observation(
+          data,
+          policyJointQposAddresses,
+          policyJointDofAddresses,
+          selectedModel.policy.manifest.action.default_pose,
+          [Number($('policyForward').value), Number($('policyLateral').value), Number($('policyYaw').value)],
+          previousAction,
+        )
+        : new Float32Array([
+          Math.sin(policyPhase) * amplitude,
+          Math.cos(policyPhase) * amplitude,
+          amplitude,
+        ]);
       const rawAction = await runner.run(observation);
+      previousAction = Float32Array.from(rawAction);
+      const targetRanges = selectedModel.policy.adapter === 'go2_velocity'
+        ? policyJointQposAddresses.map((_, index) => {
+          const jointId = mujoco.mj_name2id(model, OBJ.JOINT, selectedModel.policy.manifest.action.joints[index]);
+          return [model.jnt_range[jointId * 2], model.jnt_range[jointId * 2 + 1]];
+        })
+        : policyControlRanges;
       const result = applyJointPositionAction(
         rawAction,
         selectedModel.policy.manifest,
         policyHomeControl,
-        policyControlRanges,
+        targetRanges,
       );
-      currentControl = Float64Array.from(data.ctrl);
-      policyActuatorIds.forEach((id, index) => { currentControl[id] = result.applied[index]; });
+      if (selectedModel.policy.adapter === 'go2_velocity') currentControl = result.applied;
+      else {
+        currentControl = Float64Array.from(data.ctrl);
+        policyActuatorIds.forEach((id, index) => { currentControl[id] = result.applied[index]; });
+      }
       policyPhase += 2 * Math.PI * speed / selectedModel.policy.manifest.control_hz;
       $('inferenceTime').textContent = `${runner.lastInferenceMs.toFixed(2)}ms`;
       $('actionNorm').textContent = result.actionNorm.toFixed(3);
@@ -288,7 +343,19 @@ async function main() {
   }
 
   function applyPolicyForces(dt) {
-    data.ctrl.set(currentControl);
+    if (selectedModel.policy.adapter === 'go2_velocity') {
+      const positions = policyJointQposAddresses.map((address) => data.qpos[address]);
+      const velocities = policyJointDofAddresses.map((address) => data.qvel[address]);
+      const torque = jointPositionTargetsToTorque(
+        currentControl,
+        positions,
+        velocities,
+        selectedModel.policy.manifest.controller.stiffness,
+        selectedModel.policy.manifest.controller.damping,
+        policyControlRanges,
+      );
+      policyActuatorIds.forEach((id, index) => { data.ctrl[id] = torque[index]; });
+    } else data.ctrl.set(currentControl);
     data.xfrc_applied.fill(0);
     if (pushRemaining > 0 && pushBodyId > 0) {
       data.xfrc_applied[pushBodyId * 6 + 1] = 65;
@@ -316,6 +383,8 @@ async function main() {
     for (const { input } of sliders) input.disabled = mode !== 'pose';
   }
   $('policyMode').disabled = !selectedModel.policy;
+  $('waveCommands').hidden = selectedModel.policy?.adapter === 'go2_velocity';
+  $('velocityCommands').hidden = selectedModel.policy?.adapter !== 'go2_velocity';
   $('poseMode').addEventListener('click', () => { void setMode('pose'); });
   $('simMode').addEventListener('click', () => { void setMode('sim'); });
   $('policyMode').addEventListener('click', () => { void setMode('policy'); });
@@ -349,6 +418,13 @@ async function main() {
   $('policySpeed').addEventListener('input', () => {
     $('speedValue').textContent = `${Number($('policySpeed').value).toFixed(2)} Hz`;
   });
+  for (const [inputId, outputId, suffix] of [
+    ['policyForward', 'forwardValue', ' m/s'],
+    ['policyLateral', 'lateralValue', ' m/s'],
+    ['policyYaw', 'yawValue', ' rad/s'],
+  ]) {
+    $(inputId).addEventListener('input', () => { $(outputId).textContent = `${Number($(inputId).value).toFixed(2)}${suffix}`; });
+  }
 
   const transform = new THREE.Matrix4();
   const axisFix = new THREE.Matrix4().makeRotationX(Math.PI / 2);

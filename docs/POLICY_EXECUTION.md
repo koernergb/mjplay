@@ -375,7 +375,7 @@ not make every initial page load significantly larger.
 
 ### Current implementation status
 
-P0 is complete. mjplay now includes:
+P0 and the core P1 policy path are complete. mjplay now includes:
 
 - ONNX Runtime Web loaded only when Policy mode is selected
 - A versioned and validated policy manifest
@@ -386,10 +386,20 @@ P0 is complete. mjplay now includes:
 - Live execution provider, cold-start time, inference time, action norm, and
   clipping diagnostics
 - A UR5e neural-motion demo that visibly exercises all six actuators
+- A pinned community Go2 PPO checkpoint with its split ONNX weights
+- The checkpoint's exact 45-value observation and 12-action contract
+- Body-frame angular velocity, projected gravity, velocity commands, relative
+  joint position/velocity, and previous-action observation adapters
+- A 50 Hz policy loop feeding a per-physics-step PD torque controller
+- Forward, lateral, and yaw commands plus a torso push disturbance
+- MuJoCo Menagerie Go2 assets and explicit BSD-3-Clause attribution
 
-The included network is a deterministic execution fixture, not a trained task
-policy. P1 still requires a compatible Go2 checkpoint plus its authoritative
-observation, normalization, action, and license metadata.
+The Go2 checkpoint is a third-party community model by Hugging Face user
+`diasAiMaster`, pinned to revision
+`9a723b7ab0784cd86abb942836aa1f208ddde891`. It is declared BSD-3-Clause and
+was trained with Unitree's `unitree_rl_mjlab`, but it is **not an official
+Unitree checkpoint**. Its original model card and deployment YAML are preserved
+in the policy package.
 
 ### Original P0 checklist
 

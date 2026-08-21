@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "id": "community-go2-velocity-flat-9a723b7",
+  "name": "Community Go2 velocity-flat PPO",
+  "description": "Third-party BSD-licensed Go2 locomotion checkpoint trained with unitree_rl_mjlab.",
+  "provenance": {
+    "kind": "community",
+    "author": "diasAiMaster",
+    "source": "https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat",
+    "revision": "9a723b7ab0784cd86abb942836aa1f208ddde891",
+    "license": "BSD-3-Clause"
+  },
+  "robot": "go2",
+  "runtime": "onnx",
+  "control_hz": 50,
+  "observation": {
+    "input_name": "obs",
+    "size": 45,
+    "terms": [
+      "base_ang_vel_x", "base_ang_vel_y", "base_ang_vel_z",
+      "projected_gravity_x", "projected_gravity_y", "projected_gravity_z",
+      "command_x", "command_y", "command_yaw",
+      "FL_hip_pos", "FL_thigh_pos", "FL_calf_pos",
+      "FR_hip_pos", "FR_thigh_pos", "FR_calf_pos",
+      "RL_hip_pos", "RL_thigh_pos", "RL_calf_pos",
+      "RR_hip_pos", "RR_thigh_pos", "RR_calf_pos",
+      "FL_hip_vel", "FL_thigh_vel", "FL_calf_vel",
+      "FR_hip_vel", "FR_thigh_vel", "FR_calf_vel",
+      "RL_hip_vel", "RL_thigh_vel", "RL_calf_vel",
+      "RR_hip_vel", "RR_thigh_vel", "RR_calf_vel",
+      "last_FL_hip", "last_FL_thigh", "last_FL_calf",
+      "last_FR_hip", "last_FR_thigh", "last_FR_calf",
+      "last_RL_hip", "last_RL_thigh", "last_RL_calf",
+      "last_RR_hip", "last_RR_thigh", "last_RR_calf"
+    ]
+  },
+  "action": {
+    "output_name": "actions",
+    "type": "joint_position_target",
+    "size": 12,
+    "scale": 0.5,
+    "clip": 100,
+    "actuators": [
+      "FL_hip", "FL_thigh", "FL_calf",
+      "FR_hip", "FR_thigh", "FR_calf",
+      "RL_hip", "RL_thigh", "RL_calf",
+      "RR_hip", "RR_thigh", "RR_calf"
+    ],
+    "joints": [
+      "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+      "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+      "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+      "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint"
+    ],
+    "default_pose": [-0.1, 0.9, -1.8, 0.1, 0.9, -1.8, -0.1, 0.9, -1.8, 0.1, 0.9, -1.8]
+  },
+  "controller": {
+    "type": "pd_torque",
+    "stiffness": [20, 20, 40, 20, 20, 40, 20, 20, 40, 20, 20, 40],
+    "damping": [1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2]
+  }
+}
