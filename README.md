@@ -10,7 +10,7 @@ parts light up red.
 ## Implemented
 
 - Official `@mujoco/mujoco` 3.10.0 WebAssembly runtime
-- Franka Emika Panda and Universal Robots UR5e from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
+- Franka Emika Panda, Universal Robots UR5e, and Unitree Go2 from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
 - Detailed mesh rendering in Three.js, including MJCF material colors
 - Joint controls generated from MuJoCo joint types, names, ranges, and qpos addresses
 - Pose mode for direct hinge/slide joint manipulation
@@ -21,6 +21,8 @@ parts light up red.
 - Lazy ONNX Runtime Web policy execution for the UR5e demo
 - Policy play, pause, single-step, amplitude/speed commands, push disturbance,
   action norm, clipping, and inference timing
+- Community-trained Go2 velocity policy with forward, lateral, and yaw commands
+- Exact 45-value Go2 observation adapter and a 50 Hz PD torque-control loop
 
 The bundled model files retain their upstream licenses inside each model
 directory under `src/models/`.
@@ -40,7 +42,15 @@ The fixture maps phase observations to six actuator targets and exists to prove
 the complete browser inference → `data.ctrl` → MuJoCo loop. It is deliberately
 not described as a trained robotics policy. See
 [`docs/POLICY_EXECUTION.md`](docs/POLICY_EXECUTION.md) for the contract and the
-roadmap to a real Go2 locomotion policy.
+implementation details for browser policy execution.
+
+On the Go2, select **Policy** to run the bundled velocity-flat PPO checkpoint,
+then command forward/lateral velocity or yaw and apply a torso push. The policy
+is the BSD-3-Clause community model by Hugging Face user `diasAiMaster`, pinned
+to revision `9a723b7ab0784cd86abb942836aa1f208ddde891`. It was trained using
+Unitree's open-source `unitree_rl_mjlab`, but it is **not an official Unitree
+checkpoint**. Its model card, deployment YAML, license, and provenance notice
+are retained in `src/policies/go2-velocity-flat/`.
 
 ## Verify
 
@@ -49,9 +59,9 @@ npm run probe
 npm run build
 ```
 
-The probes validate the original collision test scene, both Menagerie models,
-manifest validation, deterministic ONNX output, and action adaptation without
-a browser.
+The probes validate the original collision test scene, all three Menagerie
+models, both ONNX policies, the Go2 observation/action adapters, PD control, and
+a one-second commanded Go2 rollout without a browser.
 
 ## Stack
 
@@ -61,6 +71,6 @@ a browser.
 
 ## Current scope
 
-The current release intentionally ships two known-good Menagerie MJCF models.
+The current release intentionally ships three known-good Menagerie MJCF models.
 User-supplied MJCF/URDF loading, perfect URDF fidelity, model authoring, contact
 forces, and multi-robot scenes remain out of scope.

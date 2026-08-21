@@ -56,6 +56,7 @@
         <select id="modelPicker">
           <option value="panda">Franka Emika Panda</option>
           <option value="ur5e">Universal Robots UR5e</option>
+          <option value="go2">Unitree Go2 · community policy</option>
         </select>
         <div class="toolbar">
           <button id="poseMode" type="button">Pose</button>
@@ -72,8 +73,16 @@
           <button id="policyStep" type="button">Step</button>
           <button id="policyPush" type="button">Push</button>
         </div>
-        <label class="policy-command"><span>Motion amplitude</span><output id="amplitudeValue">0.65</output><input id="policyAmplitude" type="range" min="0" max="1" step="0.05" value="0.65"></label>
-        <label class="policy-command"><span>Cycle speed</span><output id="speedValue">0.40 Hz</output><input id="policySpeed" type="range" min="0.1" max="1.2" step="0.05" value="0.4"></label>
+        <div id="waveCommands">
+          <label class="policy-command"><span>Motion amplitude</span><output id="amplitudeValue">0.65</output><input id="policyAmplitude" type="range" min="0" max="1" step="0.05" value="0.65"></label>
+          <label class="policy-command"><span>Cycle speed</span><output id="speedValue">0.40 Hz</output><input id="policySpeed" type="range" min="0.1" max="1.2" step="0.05" value="0.4"></label>
+        </div>
+        <div id="velocityCommands" hidden>
+          <label class="policy-command"><span>Forward velocity</span><output id="forwardValue">0.60 m/s</output><input id="policyForward" type="range" min="-1" max="2" step="0.05" value="0.6"></label>
+          <label class="policy-command"><span>Lateral velocity</span><output id="lateralValue">0.00 m/s</output><input id="policyLateral" type="range" min="-1" max="1" step="0.05" value="0"></label>
+          <label class="policy-command"><span>Yaw rate</span><output id="yawValue">0.00 rad/s</output><input id="policyYaw" type="range" min="-1" max="1" step="0.05" value="0"></label>
+          <p style="margin:10px 0 0;color:#718097;font-size:10px;line-height:1.4">Third-party checkpoint by diasAiMaster · BSD-3-Clause · not an official Unitree policy</p>
+        </div>
         <div class="policy-metrics">
           <span>runtime</span><strong id="policyRuntime">not loaded</strong>
           <span>inference</span><strong id="inferenceTime">–</strong>

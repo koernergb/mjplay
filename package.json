@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "probe": "node probe_test.mjs && node panda_probe_test.mjs && node ur5e_probe_test.mjs && node policy_probe_test.mjs"
+    "probe": "node probe_test.mjs && node panda_probe_test.mjs && node ur5e_probe_test.mjs && node policy_probe_test.mjs && node go2_policy_probe_test.mjs"
   },
   "dependencies": {
     "@mujoco/mujoco": "^3.10.0",
